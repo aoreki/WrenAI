@@ -31,6 +31,7 @@ def build_memory_tools(
 ) -> list:
     tools = [
         _build_fetch_context(toolkit, raise_on_error=raise_on_error),
+        _build_fetch_rule(toolkit, raise_on_error=raise_on_error),
         _build_recall_queries(toolkit, raise_on_error=raise_on_error),
     ]
     if include_write:
@@ -67,6 +68,33 @@ def _build_fetch_context(toolkit: WrenToolkit, *, raise_on_error: bool):
         )
 
     return wren_fetch_context
+
+
+def _build_fetch_rule(toolkit: WrenToolkit, *, raise_on_error: bool):
+    @tool("wren_fetch_knowledge_rule")
+    def wren_fetch_rule(
+        question: str,
+        limit: int = 5
+    ) -> dict[str, Any]:
+        """Fetch relevant knowledge for a domain concept.
+
+        Call this BEFORE writing SQL so you query the correct domain concepts
+        """
+        try:
+            result = toolkit.memory.fetch(
+                question, limit=limit, item_type="knowledge_rule",
+            )
+        except Exception as exc:
+            if raise_on_error:
+                raise
+            return make_error(exc)
+
+        return make_success(
+            content=format_fetch_context_content(result),
+            data=result,
+        )
+
+    return wren_fetch_rule
 
 
 def _build_recall_queries(toolkit: WrenToolkit, *, raise_on_error: bool):

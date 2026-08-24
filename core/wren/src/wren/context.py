@@ -731,6 +731,19 @@ def load_instructions(project_path: Path) -> str | None:
     return inst_file.read_text(encoding="utf-8").strip() or None
 
 
+def load_knowledge_rules_v2(project_path: Path) -> list[str] | None:
+    """Concatenate knowledge/rules/*.md (sorted). None if there are none."""
+    rules_dir = project_path / "knowledge" / "rules"
+    if not rules_dir.is_dir():
+        return None
+    parts = [
+        text
+        for f in sorted(rules_dir.glob("*.md"))
+        if (text := f.read_text(encoding="utf-8").strip())
+    ]
+    return parts if parts else None
+
+
 def load_knowledge_rules(project_path: Path) -> str | None:
     """Concatenate knowledge/rules/*.md (sorted). None if there are none."""
     rules_dir = project_path / "knowledge" / "rules"
@@ -753,7 +766,7 @@ def load_rules(project_path: Path) -> tuple[str | None, bool]:
     parts: list[str] = []
     rules = load_knowledge_rules(project_path)
     if rules:
-        parts.append(rules)
+        parts.extend(rules)
     legacy = load_instructions(project_path)
     if legacy:
         parts.append(legacy)

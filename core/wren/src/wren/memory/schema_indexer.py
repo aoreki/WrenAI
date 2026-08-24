@@ -306,6 +306,17 @@ def _describe_view(view: dict, lines: list[str]) -> None:
     lines.append("")
 
 
+def extract_rule_items(manifest: dict) -> list[dict]:
+    items: list[dict] = []
+    now = datetime.now(timezone.utc)
+    for rule in _iter_section(manifest, "rules"):
+        for single_rule in rule.split("##"):
+            rule_record = _rule_record(single_rule, now)
+            if rule_record:
+              items.append(rule_record)
+    return items
+
+
 def extract_schema_items(manifest: dict) -> list[dict]:
     """Walk an MDL manifest and produce one record per indexable element.
 
@@ -605,6 +616,22 @@ def _time_dimension_record(
         "is_calculated": False,
         "mdl_hash": mdl_h,
         "indexed_at": now,
+    }
+
+
+def _rule_record(
+    rule_text: str, now: datetime
+) -> dict | None:
+    rule_text = rule_text.strip()
+    if not rule_text:
+        return None
+    lines = rule_text.split('\n', 1)
+    if len(lines) == 1:
+        return None
+    return {
+      "text": rule_text,
+      "rule_name": lines[0],
+      "indexed_at": now,
     }
 
 

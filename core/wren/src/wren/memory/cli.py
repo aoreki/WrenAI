@@ -201,13 +201,13 @@ def index(
         try:
             from wren.context import (  # noqa: I001, PLC0415
                 discover_project_path,
-                load_rules,
+                load_knowledge_rules_v2,
             )
 
             project_path = discover_project_path()
-            instr, _ = load_rules(project_path)
-            if instr:
-                manifest["_instructions"] = instr
+            rules =  load_knowledge_rules_v2(project_path)
+            if rules:
+                manifest["rules"] = rules
         except (
             SystemExit,
             FileNotFoundError,
@@ -231,6 +231,15 @@ def index(
         + "."
     )
 
+    try:
+        result = mem_store.index_rule(manifest)
+    except ValueError as e:
+        typer.echo(f"Malformed manifest: {e}", err=True)
+        raise typer.Exit(1) from e
+    typer.echo(
+        f"Indexed {result['rule_items']} schema items"
+    )
+
     # ── Rebuild query history from knowledge/sql/*.md (source of truth) ──
     # Legacy queries.yml is still loaded when present, for the transition.
     if not no_queries:
@@ -243,7 +252,7 @@ def index(
             md_pairs = load_query_pairs(project_path)
             if md_pairs:
                 # upsert → re-running index converges on the markdown content.
-                res = mem_store.load_queries(md_pairs, upsert=True)
+                res = mem_store.load_queries(md_pairs, overwrite=True)
                 typer.echo(
                     f"Indexed {res['loaded'] + res['updated']} pair(s) from "
                     f"knowledge/sql/.",
@@ -306,7 +315,7 @@ def fetch(
         typer.Option(
             "--type",
             "-t",
-            help="Filter: model|column|relationship|view (search strategy only)",
+            help="Filter: model|column|relationship|view|knowledge_rule (search strategy only)",
         ),
     ] = None,
     model_name: Annotated[

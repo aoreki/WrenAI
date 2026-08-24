@@ -18,6 +18,7 @@ from wren.memory.schema_indexer import (
     SCHEMA_DESCRIBE_THRESHOLD,
     describe_schema,
     extract_schema_items,
+    extract_rule_items,
     manifest_hash,
 )
 
@@ -25,6 +26,7 @@ _WREN_MEMORY_DIR = Path.home() / ".wren" / "memory"
 
 _SCHEMA_TABLE = "schema_items"
 _QUERY_TABLE = "query_history"
+_RULE_TABLE = "knowledge_rules"
 
 
 def _esc(value: str) -> str:
@@ -59,6 +61,16 @@ def _query_history_arrow_schema(dim: int = _DEFAULT_DIM) -> pa.Schema:
             pa.field("datasource", pa.utf8()),
             pa.field("created_at", pa.timestamp("us", tz="UTC")),
             pa.field("tags", pa.utf8()),
+        ]
+    )
+
+def _knowledge_rule_arrow_schema(dim: int = _DEFAULT_DIM) -> pa.Schema:
+    return pa.schema(
+        [
+            pa.field("text", pa.utf8()),
+            pa.field("rule_name", pa.utf8()),
+            pa.field("vector", pa.list_(pa.float32(), dim)),
+            pa.field("indexed_at", pa.timestamp("us", tz="UTC")),
         ]
     )
 
@@ -173,6 +185,9 @@ class MemoryStore:
     def _query_table_schema(self) -> pa.Schema:
         return _query_history_arrow_schema(dim=self._dim)
 
+    def _knowledge_rule_table_schema(self) -> pa.Schema:
+        return _knowledge_rule_arrow_schema(dim=self._dim)
+
     # ── Schema indexing ───────────────────────────────────────────────────
 
     def index_schema(
@@ -230,6 +245,50 @@ class MemoryStore:
             seed_count = self._upsert_seed_queries(manifest)
 
         return {"schema_items": schema_count, "seed_queries": seed_count}
+
+
+    def index_rule(
+        self,
+        manifest: dict,
+        *,
+        replace: bool = True,
+    ) -> dict:
+        items = extract_rule_items(manifest)
+        table_exists = _RULE_TABLE in _table_names(self._db)
+        if not items:
+            if replace and table_exists:
+                self._db.drop_table(_RULE_TABLE)
+            rule_count = 0
+        else:
+            texts = [item["text"] for item in items]
+            vectors = self._embed_fn.compute_source_embeddings(texts)
+            self._validate_and_set_dim(len(vectors[0]))
+
+            for item, vec in zip(items, vectors):
+                item["vector"] = vec
+
+            if replace:
+                if table_exists:
+                    self._db.drop_table(_RULE_TABLE)
+                self._db.create_table(
+                    _RULE_TABLE,
+                    items,
+                    schema=self._knowledge_rule_table_schema(),
+                )
+            else:
+                if table_exists:
+                    tbl = self._db.open_table(_RULE_TABLE)
+                    tbl.add(items)
+                else:
+                    self._db.create_table(
+                        _RULE_TABLE,
+                        items,
+                        schema=self._knowledge_rule_table_schema(),
+                    )
+            rule_count = len(items)
+
+        return {"rule_items": rule_count}
+
 
     def _upsert_seed_queries(self, manifest: dict) -> int:
         """Replace seed queries after their embeddings are ready."""
@@ -297,6 +356,9 @@ class MemoryStore:
         Returns a dict with keys ``strategy``, ``schema`` (full) or
         ``results`` (search).
         """
+        if item_type == "knowledge_rule":
+            return self._search_knowledge_rule(query, limit)
+
         text = describe_schema(manifest)
         if len(text) <= threshold:
             return {"strategy": "full", "schema": text}
@@ -309,6 +371,20 @@ class MemoryStore:
             model_name=model_name,
             mdl_hash=mdl_hash_val,
         )
+        return {"strategy": "search", "results": results}
+
+    def _search_knowledge_rule(self, query: str, limit: int=5):
+        if _RULE_TABLE not in _table_names(self._db):
+            return []
+
+        table = self._db.open_table(_RULE_TABLE)
+        q = table.search(
+            self._embed_fn.compute_query_embeddings(query)[0],
+        )
+
+        results = q.limit(limit).to_list()
+        for r in results:
+            r.pop("vector", None)
         return {"strategy": "search", "results": results}
 
     def _search_schema(
@@ -574,10 +650,10 @@ class MemoryStore:
         Returns ``{"loaded": N, "skipped": M, "updated": U}``.
         """
         if overwrite:
-            sources = {p.get("source", "user") for p in pairs}
+            table_exists = _QUERY_TABLE in _table_names(self._db)
+            if table_exists:
+                self._db.drop_table(_QUERY_TABLE)
             records = self._prepare_query_records(pairs)
-            for src in sources:
-                self.forget_queries_by_source(src)
             self._write_query_records(records)
             return {"loaded": len(records), "skipped": 0, "updated": 0}
 
