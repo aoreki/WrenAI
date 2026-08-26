@@ -109,6 +109,59 @@ After installing `casey/just`, you can use the following commands:
 - `just test` — Run both Rust and Python tests.
 - `just build` — Build the Python wheel. Output goes to `target/wheels/`.
 
+### Cross-Compilation
+
+The official CI builds wheels on native runners for each platform. When you
+need to produce a wheel for a different platform locally (e.g. building a
+Linux x86_64 wheel on ARM64 macOS), use one of the approaches below.
+
+#### Option 1: `cargo-zigbuild` + maturin (requires [zig](https://ziglang.org))
+
+```bash
+# 1. Install the Rust cross-compilation target
+rustup target add x86_64-unknown-linux-gnu
+
+# 2. Install cargo-zigbuild
+cargo install cargo-zigbuild
+
+# 3. Build the wheel (large projects may hit macOS's file-descriptor limit;
+#    raise it first to avoid "ProcessFdQuotaExceeded")
+ulimit -n 4096
+cd core/wren-core-py
+maturin build --release --target x86_64-unknown-linux-gnu --zig
+```
+
+The wheel lands in `target/wheels/` with a `manylinux_2_28_x86_64` tag.
+
+Notes:
+
+- `x86_64-unknown-linux-gnu` (glibc) is the standard target and produces
+  wheels that run on virtually all Linux distributions. Only use
+  `x86_64-unknown-linux-musl` if you specifically target Alpine Linux —
+  its wheels are not compatible with glibc-based systems.
+- If linking fails with `ProcessFdQuotaExceeded`, raise the file-descriptor
+  limit (`ulimit -n 4096`); if it persists, retry with `CARGO_BUILD_JOBS=1`.
+
+#### Option 2: Docker (no Rust toolchain on host required)
+
+```bash
+cd core
+docker run --platform linux/amd64 --rm \
+  -v "$(pwd):/io" \
+  -w /io/wren-core-py \
+  quay.io/pypa/manylinux_2_28_x86_64 \
+  bash -c "
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source \$HOME/.cargo/env
+    pip install maturin
+    maturin build --release
+  "
+```
+
+Mount the parent `core/` directory (not just `wren-core-py/`) because
+`Cargo.toml` declares path dependencies on `../wren-core/core` and
+`../wren-core-base`.
+
 ### Coding Style
 
 Format via `just format`.

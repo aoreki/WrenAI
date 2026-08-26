@@ -69,7 +69,7 @@ class WrenToolkit:
 
     def dry_plan(self, sql: str) -> str:
         """Plan SQL through MDL and return the expanded SQL in target dialect."""
-        return self._build_engine().dry_plan(sql)
+        return self._build_engine(connection_info={}).dry_plan(sql)
 
     def dry_run(self, sql: str) -> None:
         """Validate SQL by planning and asking the DB to plan it without executing."""
@@ -135,7 +135,7 @@ class WrenToolkit:
 
     # ── Internal ───────────────────────────────────────────────────────────
 
-    def _build_engine(self) -> WrenEngine:
+    def _build_engine(self,connection_info: dict[str, Any] | None = None) -> WrenEngine:
         """Construct a fresh WrenEngine with a read-through manifest.
 
         The connector is reused across calls when available so DB authentication
@@ -146,7 +146,7 @@ class WrenToolkit:
         engine = WrenEngine(
             manifest_str=manifest_str,
             data_source=self._connection.datasource(),
-            connection_info=self._connection.connection_info(),
+            connection_info=connection_info if connection_info is not None else self._connection.connection_info(),
         )
         if self._connector_cache is not None:
             engine._connector = self._connector_cache

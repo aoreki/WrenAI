@@ -71,3 +71,4 @@ local_cache/
 
 # ---- Claude Code worktrees (local dev only) ----
 **/.claude/worktrees/
+.conda_env

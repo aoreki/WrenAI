@@ -58,6 +58,7 @@ class DataSource(StrEnum):
     duckdb = auto()
     spark = auto()
     databricks = auto()
+    maxcompute = auto()
 
     def get_connection_info(
         self,

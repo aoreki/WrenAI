@@ -505,6 +505,13 @@ def dry_plan(
                     raise typer.Exit(1)
             return
 
+    from wren.context import load_project_config  # noqa: PLC0415
+
+    project_path = _discover_project_for_engine(mdl)
+    if project_path is not None:
+        proj_cfg = load_project_config(project_path)
+        datasource = proj_cfg.get("data_source")
+
     conn_dict = (
         _load_conn(None, connection_file, required=False) if datasource is None else {}
     )
