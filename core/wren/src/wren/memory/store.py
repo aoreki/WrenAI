@@ -373,9 +373,9 @@ class MemoryStore:
         )
         return {"strategy": "search", "results": results}
 
-    def _search_knowledge_rule(self, query: str, limit: int=5):
+    def _search_knowledge_rule(self, query: str, limit: int=5) -> dict:
         if _RULE_TABLE not in _table_names(self._db):
-            return []
+            return {"strategy": "search", "results": []}
 
         table = self._db.open_table(_RULE_TABLE)
         q = table.search(
