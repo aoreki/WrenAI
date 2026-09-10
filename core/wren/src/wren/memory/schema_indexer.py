@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Sequence
 from datetime import datetime, timezone
 
@@ -305,12 +306,13 @@ def _describe_view(view: dict, lines: list[str]) -> None:
         lines.append(f"  SQL: {stmt}")
     lines.append("")
 
+_LEVEL2_HEADING_RE = re.compile(r"^##[ \t]", re.MULTILINE)
 
 def extract_rule_items(manifest: dict) -> list[dict]:
     items: list[dict] = []
     now = datetime.now(timezone.utc)
     for rule in _iter_section(manifest, "rules"):
-        for single_rule in rule.split("##"):
+        for single_rule in re.split(_LEVEL2_HEADING_RE, rule):
             rule_record = _rule_record(single_rule, now)
             if rule_record:
               items.append(rule_record)
@@ -626,8 +628,6 @@ def _rule_record(
     if not rule_text:
         return None
     lines = rule_text.split('\n', 1)
-    if len(lines) == 1:
-        return None
     return {
       "text": rule_text,
       "rule_name": lines[0],
