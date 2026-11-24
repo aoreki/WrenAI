@@ -766,7 +766,9 @@ def load_rules(project_path: Path) -> tuple[str | None, bool]:
     parts: list[str] = []
     rules = load_knowledge_rules(project_path)
     if rules:
-        parts.extend(rules)
+        # ``rules`` is already the joined text of knowledge/rules/*.md — append
+        # it as one part. Extending would split it into one part per character.
+        parts.append(rules)
     legacy = load_instructions(project_path)
     if legacy:
         parts.append(legacy)
