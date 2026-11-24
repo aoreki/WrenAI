@@ -197,6 +197,14 @@ def index(
 
     manifest = _load_manifest(mdl)
 
+    # Rules are collected separately and never merged into the manifest:
+    # ``mdl_hash`` is derived from the manifest and stamped on every schema row,
+    # so a ``rules`` key here would make the index-time hash differ from the
+    # fetch-time hash (fetch only reads target/mdl.json) and every schema search
+    # would come back empty. ``None`` means "not looked up" (--mdl /
+    # --no-instructions) — the existing rule index is then left untouched.
+    # ``[]`` means "project has no rules" — the rule table is replaced/cleared.
+    rules: list[str] | None = None
     if include_instructions and mdl is None:
         try:
             from wren.context import (  # noqa: I001, PLC0415
@@ -205,9 +213,7 @@ def index(
             )
 
             project_path = discover_project_path()
-            rules =  load_knowledge_rules_v2(project_path)
-            if rules:
-                manifest["rules"] = rules
+            rules = load_knowledge_rules_v2(project_path) or []
         except (
             SystemExit,
             FileNotFoundError,
@@ -231,14 +237,13 @@ def index(
         + "."
     )
 
-    try:
-        result = mem_store.index_rule(manifest)
-    except ValueError as e:
-        typer.echo(f"Malformed manifest: {e}", err=True)
-        raise typer.Exit(1) from e
-    typer.echo(
-        f"Indexed {result['rule_items']} schema items"
-    )
+    if rules is not None:
+        try:
+            rule_result = mem_store.index_rule(rules)
+        except ValueError as e:
+            typer.echo(f"Malformed rules: {e}", err=True)
+            raise typer.Exit(1) from e
+        typer.echo(f"Indexed {rule_result['rule_items']} rule item(s).")
 
     # ── Rebuild query history from knowledge/sql/*.md (source of truth) ──
     # Legacy queries.yml is still loaded when present, for the transition.
@@ -650,10 +655,16 @@ def watch(
             raise typer.Exit(1)
 
     def _reindex() -> None:
+        from wren.context import load_knowledge_rules_v2  # noqa: PLC0415
+        from wren.memory.markdown import load_query_pairs  # noqa: PLC0415
+
         manifest = _load_manifest(mdl)
         mem_store = _get_store(path)
         result = mem_store.index_schema(manifest, seed_queries=True)
-        from wren.memory.markdown import load_query_pairs  # noqa: PLC0415
+        # Rules travel beside the manifest (never inside it) for the same
+        # reason as in ``index``: the manifest is what ``mdl_hash`` hashes.
+        rules = load_knowledge_rules_v2(project_path) or []
+        rule_count = mem_store.index_rule(rules)["rule_items"]
 
         md_pairs = load_query_pairs(project_path)
         loaded = 0
@@ -663,6 +674,7 @@ def watch(
         typer.echo(
             f"Reindexed {result['schema_items']} schema item(s)"
             + (f", {loaded} pair(s)" if loaded else "")
+            + (f", {rule_count} rule item(s)" if rule_count else "")
             + "."
         )
 

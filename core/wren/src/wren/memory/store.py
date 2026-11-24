@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,8 +18,8 @@ from wren.memory.embeddings import (
 from wren.memory.schema_indexer import (
     SCHEMA_DESCRIBE_THRESHOLD,
     describe_schema,
-    extract_schema_items,
     extract_rule_items,
+    extract_schema_items,
     manifest_hash,
 )
 
@@ -63,6 +64,7 @@ def _query_history_arrow_schema(dim: int = _DEFAULT_DIM) -> pa.Schema:
             pa.field("tags", pa.utf8()),
         ]
     )
+
 
 def _knowledge_rule_arrow_schema(dim: int = _DEFAULT_DIM) -> pa.Schema:
     return pa.schema(
@@ -246,14 +248,20 @@ class MemoryStore:
 
         return {"schema_items": schema_count, "seed_queries": seed_count}
 
-
     def index_rule(
         self,
-        manifest: dict,
+        rules: Sequence[str] | None,
         *,
         replace: bool = True,
     ) -> dict:
-        items = extract_rule_items(manifest)
+        """Embed and store business rules from ``knowledge/rules/*.md``.
+
+        *rules* is passed separately from the manifest so rule text never
+        enters :func:`manifest_hash`: the schema table and the rule table
+        version independently, and a rule edit cannot invalidate the schema
+        index (or vice versa).
+        """
+        items = extract_rule_items(rules)
         table_exists = _RULE_TABLE in _table_names(self._db)
         if not items:
             if replace and table_exists:
@@ -288,7 +296,6 @@ class MemoryStore:
             rule_count = len(items)
 
         return {"rule_items": rule_count}
-
 
     def _upsert_seed_queries(self, manifest: dict) -> int:
         """Replace seed queries after their embeddings are ready."""
@@ -373,7 +380,7 @@ class MemoryStore:
         )
         return {"strategy": "search", "results": results}
 
-    def _search_knowledge_rule(self, query: str, limit: int=5) -> dict:
+    def _search_knowledge_rule(self, query: str, limit: int = 5) -> dict:
         if _RULE_TABLE not in _table_names(self._db):
             return {"strategy": "search", "results": []}
 

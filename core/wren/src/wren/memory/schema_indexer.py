@@ -306,16 +306,34 @@ def _describe_view(view: dict, lines: list[str]) -> None:
         lines.append(f"  SQL: {stmt}")
     lines.append("")
 
+
 _LEVEL2_HEADING_RE = re.compile(r"^##[ \t]", re.MULTILINE)
 
-def extract_rule_items(manifest: dict) -> list[dict]:
+
+def extract_rule_items(rules: Sequence[str] | None) -> list[dict]:
+    """Split each rule string on ``##`` headings into one record per section.
+
+    *rules* is the list of ``knowledge/rules/*.md`` bodies and is passed in
+    separately from the manifest on purpose: rule text must never reach
+    :func:`manifest_hash`, or the hash stamped at index time (manifest + rules)
+    would differ from the one computed at fetch time (manifest only) and every
+    schema search would return nothing.
+    """
+    if rules is None:
+        return []
+    if isinstance(rules, (str, bytes)) or not isinstance(rules, Sequence):
+        raise ValueError(f"rules must be a list, got {type(rules).__name__}")
     items: list[dict] = []
     now = datetime.now(timezone.utc)
-    for rule in _iter_section(manifest, "rules"):
+    for rule in rules:
+        if not isinstance(rule, str):
+            raise ValueError(
+                f"rules entries must be strings, got {type(rule).__name__}"
+            )
         for single_rule in re.split(_LEVEL2_HEADING_RE, rule):
             rule_record = _rule_record(single_rule, now)
             if rule_record:
-              items.append(rule_record)
+                items.append(rule_record)
     return items
 
 
@@ -621,17 +639,15 @@ def _time_dimension_record(
     }
 
 
-def _rule_record(
-    rule_text: str, now: datetime
-) -> dict | None:
+def _rule_record(rule_text: str, now: datetime) -> dict | None:
     rule_text = rule_text.strip()
     if not rule_text:
         return None
-    lines = rule_text.split('\n', 1)
+    lines = rule_text.split("\n", 1)
     return {
-      "text": rule_text,
-      "rule_name": lines[0],
-      "indexed_at": now,
+        "text": rule_text,
+        "rule_name": lines[0],
+        "indexed_at": now,
     }
 
 

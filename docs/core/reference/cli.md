@@ -224,6 +224,7 @@ When using the search strategy, optional `--type` and `--model` filters narrow t
 wren memory fetch -q "customer order price"
 wren memory fetch -q "revenue" --type column --model orders
 wren memory fetch -q "order date" --threshold 50000 --output json
+wren memory fetch -q "amounts are in USD" --type knowledge_rule
 ```
 
 | Flag | Description |
@@ -231,10 +232,14 @@ wren memory fetch -q "order date" --threshold 50000 --output json
 | `-q, --query` | Search query (required) |
 | `--mdl` | Path to MDL JSON file |
 | `-l, --limit` | Max results for search strategy (default: 5) |
-| `-t, --type` | Filter: `model`, `column`, `relationship`, `view` (search strategy only) |
+| `-t, --type` | Filter: `model`, `column`, `relationship`, `view`, `knowledge_rule` (search strategy only) |
 | `--model` | Filter by model name (search strategy only) |
 | `--threshold` | Character threshold for full vs search (default: 30,000) |
 | `-o, --output` | Output format: `table` (default), `json` |
+
+`--type knowledge_rule` searches business rules instead of schema: one row per `##`
+section of `knowledge/rules/*.md`, populated by `wren memory index`. Rule rows are not
+versioned against the MDL, so they stay searchable until the next `wren memory index`.
 
 ### `wren memory store`
 
